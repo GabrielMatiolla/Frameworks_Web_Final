@@ -1,0 +1,181 @@
+<div class="pokedex-container">
+  
+  <div class="header-acoes">
+    <h2>Catálogo Full-Stack</h2>
+    <div class="filtros">
+      <button [class.ativo]="abaAtiva === 'catalogo'" (click)="carregarTodos()">Pokedex</button>
+      <button [class.ativo]="abaAtiva === 'favoritos'" (click)="mostrarFavoritos()">Favoritos ❤️</button>
+      <button [class.ativo]="abaAtiva === 'time'" (click)="mostrarTime()">Meu Time 🛡️</button>
+      <button [class.ativo]="abaAtiva === 'arena'" (click)="mostrarArena()">Arena VS ⚔️</button>
+      <button [class.ativo]="abaAtiva === 'perfil'" (click)="mostrarPerfil()">Perfil & Status 👤</button>
+    </div>
+  </div>
+  
+  @if (abaAtiva === 'catalogo' || abaAtiva === 'favoritos' || abaAtiva === 'time') {
+    
+    @if (abaAtiva === 'time' && pokemons.length > 0) {
+      <div class="time-status">Membros do Time: {{ pokemons.length }} / 6</div>
+    }
+    
+    <div class="lista-pokemons">
+      @for (pokemon of pokemons; track pokemon.nome) {
+        <div class="card" (click)="abrirDetalhes(pokemon)">
+          <img [src]="pokemon.imagem" alt="Foto de {{ pokemon.nome }}">
+          <h3>{{ pokemon.nome | titlecase }}</h3>
+        </div>
+      }
+    </div>
+  }
+
+  @if (abaAtiva === 'arena') {
+    <div class="arena-container">
+      
+      <div class="lutador-box">
+        <select class="seletor-pokemon" (change)="selecionarLutadorParaArena(1, $event)">
+          <option value="">Selecione o Desafiante 1</option>
+          @for (p of catalogoCompleto; track p.nome) { 
+            <option [value]="p.nome">{{ p.nome | titlecase }}</option> 
+          }
+        </select>
+
+        @if (lutador1) {
+          <img class="img-lutador" [src]="lutador1.imagem">
+          <h3>{{ lutador1.nome | titlecase }}</h3>
+          <div class="stats-comparacao">
+            @for (stat of lutador1.stats; track stat.stat.name) {
+              <div class="stat-linha" [class.ganhando]="verificarVencedor(stat.stat.name) === 1">
+                <span>{{ stat.stat.name | uppercase }}</span>
+                <strong>{{ stat.base_stat }}</strong>
+              </div>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="versus-logo">VS</div>
+
+      <div class="lutador-box">
+        <select class="seletor-pokemon" (change)="selecionarLutadorParaArena(2, $event)">
+          <option value="">Selecione o Desafiante 2</option>
+          @for (p of catalogoCompleto; track p.nome) { 
+            <option [value]="p.nome">{{ p.nome | titlecase }}</option> 
+          }
+        </select>
+
+        @if (lutador2) {
+          <img class="img-lutador" [src]="lutador2.imagem">
+          <h3>{{ lutador2.nome | titlecase }}</h3>
+          <div class="stats-comparacao">
+            @for (stat of lutador2.stats; track stat.stat.name) {
+              <div class="stat-linha" [class.ganhando]="verificarVencedor(stat.stat.name) === 2">
+                <strong>{{ stat.base_stat }}</strong>
+                <span>{{ stat.stat.name | uppercase }}</span>
+              </div>
+            }
+          </div>
+        }
+      </div>
+
+    </div>
+  }
+
+  @if (abaAtiva === 'perfil') {
+    <div class="perfil-container">
+      
+      <div class="perfil-form">
+        <h3>Editar Dados do Treinador</h3>
+        
+        <div class="campo">
+          <label>Nome do Treinador</label>
+          <input type="text" [(ngModel)]="treinador.nome" placeholder="Ex: Ash Ketchum">
+        </div>
+        
+        <div class="campo">
+          <label>Região de Origem</label>
+          <select [(ngModel)]="treinador.regiao">
+            <option value="Kanto">Kanto</option>
+            <option value="Johto">Johto</option>
+            <option value="Hoenn">Hoenn</option>
+            <option value="Sinnoh">Sinnoh</option>
+            <option value="Paldea">Paldea</option>
+          </select>
+        </div>
+        
+        <div class="campo">
+          <label>Título Profissional</label>
+          <input type="text" [(ngModel)]="treinador.titulo" placeholder="Ex: Mestre Pokémon">
+        </div>
+        
+        <button class="btn-salvar" (click)="salvarPerfil()">Gravar Alterações no Servidor</button>
+        
+        @if (mensagemSalvar) {
+          <div class="alerta-sucesso">{{ mensagemSalvar }}</div>
+        }
+      </div>
+
+      <div class="perfil-grafico">
+        <h3>Análise de Poder do seu Time</h3>
+        <canvas id="meuGrafico"></canvas>
+      </div>
+      
+    </div>
+  }
+
+</div>
+
+@if (pokemonSelecionado) {
+  <div class="modal-overlay" (click)="fecharDetalhes()">
+    <div class="modal-content" (click)="$event.stopPropagation()">
+      <button class="btn-close" (click)="fecharDetalhes()">&times;</button>
+      
+      <div class="modal-header">
+        <img [src]="pokemonSelecionado.imagem" alt="{{ pokemonSelecionado.nome }}">
+        <h2>{{ pokemonSelecionado.nome | titlecase }}</h2>
+        
+        <div class="botoes-acao">
+          @if (checarSeEFavorito(pokemonSelecionado.nome)) {
+            <button class="btn-acao remover" (click)="removerFavorito(pokemonSelecionado.nome)">💔 Remover Favorito</button>
+          } @else {
+            <button class="btn-acao adicionar" (click)="adicionarFavorito(pokemonSelecionado.nome)">❤️ Adicionar aos Favoritos</button>
+          }
+
+          @if (checarSeEdoTime(pokemonSelecionado.nome)) {
+            <button class="btn-acao time-remover" (click)="removerDoTime(pokemonSelecionado.nome)">Remover do Time 🛡️</button>
+          } @else {
+            <button class="btn-acao time-adicionar" (click)="adicionarAoTime(pokemonSelecionado.nome)">Adicionar ao Time 🛡️</button>
+          }
+        </div>
+      </div>
+
+      <div class="modal-body">
+        
+        <div class="info-row">
+          <div class="info-item">
+            <span class="label">Altura</span>
+            <span class="value">{{ pokemonSelecionado.height ? (pokemonSelecionado.height / 10) + ' m' : 'N/A' }}</span>
+          </div>
+          <div class="info-item">
+            <span class="label">Peso</span>
+            <span class="value">{{ pokemonSelecionado.weight ? (pokemonSelecionado.weight / 10) + ' kg' : 'N/A' }}</span>
+          </div>
+        </div>
+
+        @if (pokemonSelecionado.stats) {
+          <div class="stats-container">
+            <h3>Atributos Base</h3>
+            @for (stat of pokemonSelecionado.stats; track stat.stat.name) {
+              <div class="stat-row">
+                <span class="stat-name">{{ stat.stat.name | uppercase }}</span>
+                <div class="stat-bar-bg">
+                  <div class="stat-bar-fill" [style.width.%]="stat.base_stat > 100 ? 100 : stat.base_stat"></div>
+                </div>
+                <span class="stat-value">{{ stat.base_stat }}</span>
+              </div>
+            }
+          </div>
+        }
+        
+      </div>
+    </div>
+  </div>
+}
