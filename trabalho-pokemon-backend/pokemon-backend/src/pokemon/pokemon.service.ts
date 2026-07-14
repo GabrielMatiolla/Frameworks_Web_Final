@@ -1,108 +1,58 @@
 import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
-import * as fs from 'fs';
-import * as path from 'path';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, Like } from 'typeorm';
+import { PokemonEntity } from './entities/pokemon.entity';
 
 @Injectable()
 export class PokemonService {
-  private readonly caminhoArquivo = path.join(process.cwd(), 'pokemons.json');
-  
-  // Variáveis em memória (Simulando uma base de dados)
-  private favoritos: any[] = []; 
-  private meuTime: any[] = []; 
-  
-  // O perfil padrão inicial do treinador
-  private treinador = { 
-    nome: 'Gabriel Tadeu Matiolla', 
-    regiao: 'Kanto', 
-    titulo: 'Desenvolvedor Full-Stack' 
-  };
+  constructor(
+    @InjectRepository(PokemonEntity)
+    private pokemonRepository: Repository<PokemonEntity>,
+  ) {}
 
-  private obterDadosLocais(): any[] {
-    try {
-      const conteudo = fs.readFileSync(this.caminhoArquivo, 'utf-8');
-      return JSON.parse(conteudo);
-    } catch (error) {
-      throw new HttpException('Erro ao ler a base de dados local de Pokémons', HttpStatus.INTERNAL_SERVER_ERROR);
+  // 1. C - CREATE (Adicionar novo Pokémon)
+  async criar(dados: any) {
+    const existe = await this.pokemonRepository.findOne({ where: { nome: dados.nome } });
+    if (existe) {
+      throw new HttpException('Esse Pokémon já está registrado no banco!', HttpStatus.BAD_REQUEST);
     }
+
+    const novoPokemon = this.pokemonRepository.create(dados);
+    return await this.pokemonRepository.save(novoPokemon);
   }
 
-  // --- CATÁLOGO GERAL ---
-  async buscarTodos(limit: number = 20) {
-    const listaCompleta = this.obterDadosLocais();
-    return listaCompleta.slice(0, limit).map(pokemon => ({
-      nome: pokemon.nome,
-      imagem: pokemon.imagem
-    }));
+  // 2. R - READ (Listar todos)
+  async buscarTodos() {
+    return await this.pokemonRepository.find();
   }
 
+  // 3. R - READ (Pesquisar por trecho do nome)
+  async pesquisar(termo: string) {
+    return await this.pokemonRepository.find({
+      where: { nome: Like(`%${termo}%`) } // O Like permite buscar digitando apenas "pika" para achar "pikachu"
+    });
+  }
+
+  // 4. R - READ (Buscar Específico por nome exato)
   async buscarPorNome(nome: string) {
-    const listaCompleta = this.obterDadosLocais();
-    const pokemonEncontrado = listaCompleta.find(p => p.nome.toLowerCase() === nome.toLowerCase());
-
-    if (!pokemonEncontrado) {
-      throw new HttpException('Pokémon não encontrado na base local', HttpStatus.NOT_FOUND);
+    const pokemon = await this.pokemonRepository.findOne({ where: { nome } });
+    if (!pokemon) {
+      throw new HttpException('Pokémon não encontrado no banco', HttpStatus.NOT_FOUND);
     }
-    return pokemonEncontrado;
+    return pokemon;
   }
 
-  // --- LÓGICA DE FAVORITOS ---
-  async obterFavoritos() {
-    return this.favoritos.map(pokemon => ({
-      nome: pokemon.nome,
-      imagem: pokemon.imagem
-    }));
+  // 5. U - UPDATE (Editar um Pokémon)
+  async atualizar(nome: string, dados: any) {
+    const pokemon = await this.buscarPorNome(nome); // Verifica se existe
+    Object.assign(pokemon, dados); // Mescla as alterações
+    return await this.pokemonRepository.save(pokemon); // Salva no MySQL
   }
 
-  async favoritar(nome: string) {
+  // 6. D - DELETE (Excluir do banco)
+  async deletar(nome: string) {
     const pokemon = await this.buscarPorNome(nome);
-    const jaExiste = this.favoritos.some(p => p.nome === pokemon.nome);
-    
-    if (!jaExiste) {
-      this.favoritos.push(pokemon);
-    }
-    return { sucesso: true, mensagem: `${nome} favoritado com sucesso!` };
-  }
-
-  async removerFavorito(nome: string) {
-    this.favoritos = this.favoritos.filter(p => p.nome !== nome);
-    return { sucesso: true, mensagem: `${nome} removido dos favoritos!` };
-  }
-
-  // --- LÓGICA DE MONTAGEM DE TIME (MAX 6) ---
-  async obterTime() {
-    return this.meuTime.map(pokemon => ({
-      nome: pokemon.nome,
-      imagem: pokemon.imagem
-    }));
-  }
-
-  async adicionarAoTime(nome: string) {
-    if (this.meuTime.length >= 6) {
-      throw new HttpException('O seu time já está cheio (Máximo de 6 Pokémons)!', HttpStatus.BAD_REQUEST);
-    }
-    
-    const pokemon = await this.buscarPorNome(nome);
-    const jaExiste = this.meuTime.some(p => p.nome === pokemon.nome);
-    
-    if (!jaExiste) {
-      this.meuTime.push(pokemon);
-    }
-    return { sucesso: true, mensagem: `${nome} adicionado ao time!` };
-  }
-
-  async removerDoTime(nome: string) {
-    this.meuTime = this.meuTime.filter(p => p.nome !== nome);
-    return { sucesso: true, mensagem: `${nome} removido do time!` };
-  }
-
-  // --- LÓGICA DO PERFIL DO TREINADOR (CRUD COMPLETO) ---
-  async obterTreinador() {
-    return this.treinador;
-  }
-
-  async atualizarTreinador(dados: any) {
-    // Mescla os dados atuais com os novos dados recebidos do Angular
-    this.treinador = { ...this.treinador, ...dados };
-    return this.treinador;
+    await this.pokemonRepository.remove(pokemon);
+    return { sucesso: true, mensagem: `${nome} foi excluído permanentemente do banco!` };
   }
 }

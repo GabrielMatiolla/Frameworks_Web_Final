@@ -1,114 +1,253 @@
 import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms'; // Necessário para o Formulário
-import Chart from 'chart.js/auto'; // Biblioteca de Gráficos
+import { FormsModule } from '@angular/forms';
 
 @Component({
   selector: 'app-conteudo',
   standalone: true,
-  imports: [CommonModule, FormsModule], // FormsModule adicionado aqui!
+  imports: [CommonModule, FormsModule],
   templateUrl: './conteudo.html',
   styleUrls: ['./conteudo.css']
 })
 export class ConteudoComponent implements OnInit {
-  abaAtiva: 'catalogo' | 'favoritos' | 'time' | 'arena' | 'perfil' = 'catalogo';
-  
+abaAtiva: 'catalogo' | 'favoritos' | 'time' | 'perfil' | 'arena' = 'catalogo';  
   pokemons: any[] = [];
   catalogoCompleto: any[] = [];
   pokemonSelecionado: any = null;
-  listaFavoritos: any[] = []; 
-  listaTime: any[] = []; 
+  
+  // Variáveis do CRUD
+  modoEdicaoPokemon: boolean = false;
+  dadosEdicaoPokemon: any = {};
+  modoCadastro: boolean = false;
+  novoPokemon: any = this.gerarPokemonVazio();
 
+  // Variáveis de Autenticação e Favoritos
+  usuarioLogado: any = null;
+  token: string | null = null;
+  modoAuth: 'login' | 'cadastro' = 'login';
+  dadosLogin = { email: '', senha: '' };
+  dadosCadastro = { nome: '', email: '', senha: '', regiao: 'Kanto', avatar: '' };
+  
+  favoritosUsuario: any[] = [];
+  // Variáveis da Arena (VS)
   lutador1: any = null;
   lutador2: any = null;
-
-  // Variáveis do Perfil
-  treinador: any = { nome: '', regiao: '', titulo: '' };
-  mensagemSalvar: string = '';
-  graficoInstancia: any;
+  resultadoBatalha: string = '';
 
   constructor(private cdr: ChangeDetectorRef) {}
 
   ngOnInit(): void {
+    const tokenSalvo = localStorage.getItem('token');
+    const userSalvo = localStorage.getItem('usuario');
+    
+    if (tokenSalvo && userSalvo) {
+      this.token = tokenSalvo;
+      this.usuarioLogado = JSON.parse(userSalvo);
+      this.carregarFavoritos();
+    }
+    
     this.carregarTodos();
-    this.atualizarListasEmSegundoPlano();
-    this.carregarTreinador();
   }
 
-  // --- MÉTODOS EXISTENTES MANTIDOS ---
-  carregarTodos() { this.abaAtiva = 'catalogo'; fetch('http://localhost:3000/pokemon?limit=20').then(r => r.json()).then(d => { this.pokemons = d; this.catalogoCompleto = d; this.cdr.detectChanges(); }); }
-  mostrarFavoritos() { this.abaAtiva = 'favoritos'; fetch('http://localhost:3000/pokemon/favoritos').then(r => r.json()).then(d => { this.pokemons = d; this.cdr.detectChanges(); }); }
-  mostrarTime() { this.abaAtiva = 'time'; fetch('http://localhost:3000/pokemon/time').then(r => r.json()).then(d => { this.pokemons = d; this.cdr.detectChanges(); }); }
-  mostrarArena() { this.abaAtiva = 'arena'; this.cdr.detectChanges(); }
-  atualizarListasEmSegundoPlano() {
-    fetch('http://localhost:3000/pokemon/favoritos').then(r => r.json()).then(d => this.listaFavoritos = d);
-    fetch('http://localhost:3000/pokemon/time').then(r => r.json()).then(d => this.listaTime = d);
-  }
-  abrirDetalhes(pokemon: any) { fetch(`http://localhost:3000/pokemon/${pokemon.nome}`).then(r => r.json()).then(d => { this.pokemonSelecionado = d; this.cdr.detectChanges(); }); }
-  fecharDetalhes() { this.pokemonSelecionado = null; this.cdr.detectChanges(); }
-  checarSeEFavorito(nome: string): boolean { return this.listaFavoritos.some(p => p.nome === nome); }
-  adicionarFavorito(nome: string) { fetch(`http://localhost:3000/pokemon/favoritos/${nome}`, { method: 'POST' }).then(() => this.atualizarListasEmSegundoPlano()); }
-  removerFavorito(nome: string) { fetch(`http://localhost:3000/pokemon/favoritos/${nome}`, { method: 'DELETE' }).then(() => { this.atualizarListasEmSegundoPlano(); if (this.abaAtiva === 'favoritos') { this.mostrarFavoritos(); this.fecharDetalhes(); } }); }
-  checarSeEdoTime(nome: string): boolean { return this.listaTime.some(p => p.nome === nome); }
-  adicionarAoTime(nome: string) { fetch(`http://localhost:3000/pokemon/time/${nome}`, { method: 'POST' }).then(async (res) => { if (!res.ok) { const erro = await res.json(); alert(erro.message); } else { this.atualizarListasEmSegundoPlano(); } }); }
-  removerDoTime(nome: string) { fetch(`http://localhost:3000/pokemon/time/${nome}`, { method: 'DELETE' }).then(() => { this.atualizarListasEmSegundoPlano(); if (this.abaAtiva === 'time') { this.mostrarTime(); this.fecharDetalhes(); } }); }
-  selecionarLutadorParaArena(lado: number, evento: any) { const nome = evento.target.value; if (!nome) return; fetch(`http://localhost:3000/pokemon/${nome}`).then(r => r.json()).then(dados => { if (lado === 1) this.lutador1 = dados; else this.lutador2 = dados; this.cdr.detectChanges(); }); }
-  verificarVencedor(statName: string): number { if (!this.lutador1 || !this.lutador2) return 0; const stat1 = this.lutador1.stats.find((s:any) => s.stat.name === statName)?.base_stat || 0; const stat2 = this.lutador2.stats.find((s:any) => s.stat.name === statName)?.base_stat || 0; if (stat1 > stat2) return 1; if (stat2 > stat1) return 2; return 0; }
-
-  // --- NOVOS MÉTODOS DO PERFIL E GRÁFICOS ---
-  mostrarPerfil() {
-    this.abaAtiva = 'perfil';
-    this.cdr.detectChanges();
-    this.desenharGrafico(); // Desenha o gráfico assim que a aba abre
-  }
-
-  carregarTreinador() {
-    fetch('http://localhost:3000/pokemon/treinador')
+  // --- MÉTODOS DE FAVORITOS ---
+  carregarFavoritos() {
+    if (!this.usuarioLogado) return;
+    
+    fetch(`http://localhost:3000/favorito/${this.usuarioLogado.id}`)
       .then(r => r.json())
-      .then(d => { this.treinador = d; this.cdr.detectChanges(); });
+      .then(favs => {
+        const nomesFavoritos = favs.map((f: any) => f.pokemonNome);
+        this.favoritosUsuario = this.catalogoCompleto.filter(p => nomesFavoritos.includes(p.nome));
+        this.cdr.detectChanges();
+      });
   }
 
-  salvarPerfil() {
-    fetch('http://localhost:3000/pokemon/treinador', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(this.treinador)
-    }).then(() => {
-      this.mensagemSalvar = 'Perfil atualizado com sucesso!';
-      setTimeout(() => this.mensagemSalvar = '', 3000); // Apaga a mensagem após 3 seg
-      this.cdr.detectChanges();
-    });
-  }
-
-  desenharGrafico() {
-    const canvas = document.getElementById('meuGrafico') as HTMLCanvasElement;
-    if (!canvas) return;
-
-    if (this.graficoInstancia) {
-      this.graficoInstancia.destroy(); // Limpa o gráfico anterior se existir
+  alternarFavorito(pokemon: any) {
+    if (!this.usuarioLogado) {
+      alert('Você precisa estar logado para favoritar!');
+      return;
     }
 
-    // Calcula uma média fictícia com base na quantidade de Pokémons no time
-    const forcaTotal = this.listaTime.length * 15;
+    fetch('http://localhost:3000/favorito', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        usuarioId: this.usuarioLogado.id,
+        pokemonNome: pokemon.nome
+      })
+    })
+    .then(async (r) => {
+      if (r.ok) {
+        this.carregarFavoritos(); // Atualiza a lista se deu certo
+      } else {
+        // Mostra o erro do backend na tela
+        const erro = await r.json();
+        alert('Erro ao favoritar: ' + erro.message);
+      }
+    })
+    .catch(e => {
+      alert('Erro de conexão com o banco de dados.');
+      console.error(e);
+    });
+  }
 
-    this.graficoInstancia = new Chart(canvas, {
-      type: 'radar',
-      data: {
-        labels: ['HP', 'Ataque', 'Defesa', 'Velocidade', 'Ataque Sp.', 'Defesa Sp.'],
-        datasets: [{
-          label: 'Poder Médio do seu Time',
-          data: [50 + forcaTotal, 60 + forcaTotal, 45 + forcaTotal, 70 + forcaTotal, 65 + forcaTotal, 55 + forcaTotal],
-          backgroundColor: 'rgba(239, 68, 68, 0.4)',
-          borderColor: '#ef4444',
-          pointBackgroundColor: '#fff',
-          pointBorderColor: '#ef4444',
-        }]
-      },
-      options: {
-        responsive: true,
-        scales: { r: { angleLines: { color: 'rgba(255,255,255,0.2)' }, grid: { color: 'rgba(255,255,255,0.2)' }, pointLabels: { color: '#fff', font: { size: 14 } }, ticks: { display: false } } },
-        plugins: { legend: { labels: { color: '#fff' } } }
+  isFavorito(nome: string): boolean {
+    return this.favoritosUsuario.some(p => p.nome === nome);
+  }
+
+  // --- MÉTODOS DE AUTENTICAÇÃO ---
+  fazerLogin() {
+    fetch('http://localhost:3000/usuario/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(this.dadosLogin)
+    })
+    .then(async (r) => {
+      const resposta = await r.json();
+      if (r.ok) {
+        this.token = resposta.access_token;
+        this.usuarioLogado = resposta.usuario;
+        localStorage.setItem('token', this.token as string);
+        localStorage.setItem('usuario', JSON.stringify(this.usuarioLogado));
+        
+        alert('Bem-vindo, ' + this.usuarioLogado.nome + '!');
+        this.carregarFavoritos();
+        this.abaAtiva = 'catalogo';
+      } else {
+        alert(resposta.message || 'Erro ao fazer login.');
       }
     });
+  }
+
+  fazerCadastro() {
+    fetch('http://localhost:3000/usuario/cadastrar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(this.dadosCadastro)
+    })
+    .then(async (r) => {
+      if (r.ok) {
+        alert('Treinador cadastrado com sucesso! Faça seu login.');
+        this.modoAuth = 'login';
+      } else {
+        const resposta = await r.json();
+        alert(resposta.message || 'Erro ao cadastrar.');
+      }
+    });
+  }
+
+  fazerLogout() {
+    this.token = null;
+    this.usuarioLogado = null;
+    this.favoritosUsuario = [];
+    localStorage.removeItem('token');
+    localStorage.removeItem('usuario');
+    this.abaAtiva = 'perfil';
+  }
+
+  // --- MÉTODOS DO CRUD ---
+  gerarPokemonVazio() {
+    return { nome: '', imagem: '', altura: 0, peso: 0, hp: 0, attack: 0, defense: 0, spAttack: 0, spDefense: 0, speed: 0 };
+  }
+
+  carregarTodos() { 
+    fetch('http://localhost:3000/pokemon')
+      .then(r => r.json())
+      .then(d => { 
+        this.pokemons = d; 
+        this.catalogoCompleto = d;
+        if (this.usuarioLogado) {
+          this.carregarFavoritos();
+        } else {
+          this.cdr.detectChanges(); 
+        }
+      }); 
+  }
+
+  abrirDetalhes(pokemon: any) { 
+    fetch(`http://localhost:3000/pokemon/${pokemon.nome}`)
+      .then(r => r.json())
+      .then(d => { 
+        this.pokemonSelecionado = d; 
+        this.cdr.detectChanges(); 
+      }); 
+  }
+  
+  fecharDetalhes() { 
+    this.pokemonSelecionado = null; 
+    this.modoEdicaoPokemon = false; 
+    this.cdr.detectChanges(); 
+  }
+
+  abrirCadastro() {
+    this.novoPokemon = this.gerarPokemonVazio();
+    this.modoCadastro = true;
+  }
+
+  fecharCadastro() { this.modoCadastro = false; }
+
+  salvarNovoPokemon() {
+    fetch('http://localhost:3000/pokemon', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(this.novoPokemon)
+    }).then(r => {
+      if(r.ok) { alert('Pokémon adicionado!'); this.fecharCadastro(); this.carregarTodos(); }
+    });
+  }
+
+  habilitarEdicaoPokemon() {
+    this.modoEdicaoPokemon = true;
+    this.dadosEdicaoPokemon = JSON.parse(JSON.stringify(this.pokemonSelecionado));
+  }
+
+  cancelarEdicaoPokemon() { this.modoEdicaoPokemon = false; }
+
+  salvarEdicaoPokemon() {
+    fetch(`http://localhost:3000/pokemon/${this.pokemonSelecionado.nome}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(this.dadosEdicaoPokemon)
+    }).then(r => r.json()).then(resposta => {
+      this.pokemonSelecionado = resposta;
+      this.modoEdicaoPokemon = false;
+      this.carregarTodos();
+    });
+  }
+
+  deletarPokemon(nome: string) {
+    if (confirm(`Excluir permanentemente o ${nome}?`)) {
+      fetch(`http://localhost:3000/pokemon/${nome}`, { method: 'DELETE' })
+      .then(() => { alert('Excluído!'); this.fecharDetalhes(); this.carregarTodos(); });
+    }
+  }
+  // --- MÉTODOS DA ARENA VS ---
+  selecionarLutador(lado: number, event: any) {
+    const nome = event.target.value;
+    const pokemon = this.catalogoCompleto.find(p => p.nome === nome);
+    
+    if (lado === 1) this.lutador1 = pokemon;
+    if (lado === 2) this.lutador2 = pokemon;
+    
+    this.resultadoBatalha = ''; // Limpa o resultado anterior se trocar o lutador
+  }
+
+  batalhar() {
+    if (!this.lutador1 || !this.lutador2) {
+      alert('Você precisa selecionar dois Pokémons para iniciar a batalha!');
+      return;
+    }
+
+    // Calcula o Poder de Combate (PC) somando todos os atributos
+    const poder1 = this.lutador1.hp + this.lutador1.attack + this.lutador1.defense + this.lutador1.spAttack + this.lutador1.spDefense + this.lutador1.speed;
+    const poder2 = this.lutador2.hp + this.lutador2.attack + this.lutador2.defense + this.lutador2.spAttack + this.lutador2.spDefense + this.lutador2.speed;
+
+    if (poder1 > poder2) {
+      this.resultadoBatalha = `🏆 ${this.lutador1.nome.toUpperCase()} VENCEU! (${poder1} vs ${poder2} de poder)`;
+    } else if (poder2 > poder1) {
+      this.resultadoBatalha = `🏆 ${this.lutador2.nome.toUpperCase()} VENCEU! (${poder2} vs ${poder1} de poder)`;
+    } else {
+      this.resultadoBatalha = `⚔️ EMPATE ÉPICO! Ambos possuem ${poder1} de poder total.`;
+    }
   }
 }
